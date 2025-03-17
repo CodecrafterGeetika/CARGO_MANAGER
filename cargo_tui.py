@@ -1,54 +1,116 @@
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Button, Static, DataTable
-from textual.containers import Container, Horizontal
-from backend import get_items, retrieve_cargo, mark_waste
+from textual.containers import Vertical, Horizontal
+from textual.widgets import Header, Footer, Button, DataTable, Label, Input
+import requests
+import json
 
-class CargoUI(App):
-    """Terminal UI for the Voice-Controlled Cargo Manager"""
+API_URL = "http://127.0.0.1:8000/api"  # Ensure your Flask API is running
+def show_items():
+    try:
+        from backend import get_items  # Import inside function to avoid circular import
+        items = get_items()
+        print(items)  
+    except Exception as e:
+        print(f"❌ Error fetching items: {e}")   
+class CargoManagerTUI(App):
+    """🚀 Interactive Cargo Manager for ISS"""
+
+    CSS = """
+    Screen {
+        align: center middle;
+    }
+    Button {
+        width: 30;
+        height: 3;
+        margin: 1;
+    }
+    """
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Static("📦 Cargo Management System", classes="title")
-        
-        # Cargo Table
-        self.table = DataTable()
-        self.table.add_column("Item ID")
-        self.table.add_column("Name")
-        self.table.add_column("Status")
-        self.load_cargo_data()
-
-        yield self.table
-
-        # Action Buttons
-        yield Horizontal(
-            Button("Retrieve Item", id="retrieve"),
-            Button("Mark as Waste", id="waste"),
-            classes="buttons"
+        yield Vertical(
+            Label("📦 Cargo Management System", id="title"),
+            Horizontal(
+                Button("🔍 View Cargo", id="view"),
+                Button("➕ Add Cargo", id="add"),
+                Button("📦 Retrieve Cargo", id="retrieve"),
+                Button("🚮 Mark Waste", id="waste"),
+                Button("📜 View Logs", id="logs"),
+            ),
+            DataTable(id="data_table"),
+            Footer(),
         )
 
-        yield Footer()
+    async def on_mount(self):
+        self.table = self.query_one("#data_table", DataTable)
+        self.table.add_columns("Item ID", "Name", "Zone", "Priority", "Status")
 
-    def load_cargo_data(self):
-        """Load cargo items into the table."""
-        self.table.clear()
-        items = get_items()  # Fetch items from the database
-        for item in items:
-            self.table.add_row(item["itemId"], item["name"], item["status"])
-
-    def on_button_pressed(self, event):
-        """Handle button clicks."""
-        if not self.table.cursor_row:
-            return  # No item selected
-        
-        selected_row = self.table.get_row_at(self.table.cursor_row)
-        item_id = selected_row[0]  # First column is Item ID
-
-        if event.button.id == "retrieve":
-            retrieve_cargo(item_id)  # Retrieve the item
+    async def on_button_pressed(self, event: Button.Pressed):
+        """Handles button clicks"""
+        if event.button.id == "view":
+            await self.update_table("items")  # ✅ Fetch items correctly
+        elif event.button.id == "add":
+            await self.add_cargo()
+        elif event.button.id == "retrieve":
+            await self.retrieve_cargo()
         elif event.button.id == "waste":
-            mark_waste(item_id)  # Mark item as waste
+            await self.mark_waste()
+        elif event.button.id == "logs":
+            await self.update_table("logs")  # ✅ Fetch logs correctly
 
-        self.load_cargo_data()  # Refresh table after action
+    async def update_table(self, mode: str):
+        """Fetch and update table with cargo or logs"""
+        self.table.clear()
+        endpoint = "logs" if mode == "logs" else "items"  # ✅ Correct API endpoint
+        response = requests.get(f"{API_URL}/{endpoint}").json()
+
+        if response.get("success"):
+            for item in response.get("data", []):
+                if mode == "logs":
+                    self.table.add_row(
+                        item["timestamp"], item["actionType"],
+                        item["itemId"], json.dumps(item["details"])
+                    )
+                else:
+                    self.table.add_row(
+                        item["itemId"], item["name"], item["preferredZone"],
+                        str(item["priority"]), item.get("status", "available")
+                    )
+
+    async def add_cargo(self):
+        """Prompt user to add a cargo item"""
+        id_input = Input("Enter Item ID:")
+        name_input = Input("Enter Item Name:")
+        zone_input = Input("Enter Preferred Zone:")
+
+        await self.push_screen(id_input)
+        await self.push_screen(name_input)
+        await self.push_screen(zone_input)
+
+        data = {
+            "id": id_input.value, "name": name_input.value, "width": 10,
+            "depth": 10, "height": 10, "mass": 5, "priority": 50,
+            "expiry": "2026-01-01", "usage": 10, "zone": zone_input.value
+        }
+
+        response = requests.post(f"{API_URL}/add", json=data).json()
+        self.notify(response.get("message", "Cargo Added!"), severity="info")
+
+    async def retrieve_cargo(self):
+        """Prompt user to retrieve a cargo item"""
+        id_input = Input("Enter Item ID to Retrieve:")
+        await self.push_screen(id_input)
+
+        response = requests.post(f"{API_URL}/retrieve", json={"id": id_input.value}).json()
+        self.notify(response.get("message", "Item Retrieved!"), severity="success")
+
+    async def mark_waste(self):
+        """Prompt user to mark an item as waste"""
+        id_input = Input("Enter Item ID to Mark as Waste:")
+        await self.push_screen(id_input)
+
+        response = requests.post(f"{API_URL}/waste", json={"id": id_input.value}).json()
+        self.notify(response.get("message", "Item Marked as Waste!"), severity="warning")
 
 if __name__ == "__main__":
-    CargoUI().run()
+    CargoManagerTUI().run()

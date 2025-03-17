@@ -1,21 +1,21 @@
 import speech_recognition as sr
 import pyttsx3
-import requests
+import subprocess
 
 # Initialize text-to-speech engine
 engine = pyttsx3.init()
 
 def speak(text):
-    """Convert text to speech"""
+    """🔊 Convert text to speech"""
     engine.say(text)
     engine.runAndWait()
 
 def listen_command():
-    """Listen for a voice command and convert it to text."""
+    """🎤 Capture voice command"""
     recognizer = sr.Recognizer()
     with sr.Microphone() as source:
-        print("🎙️ Listening for command...")
-        recognizer.adjust_for_ambient_noise(source)
+        speak("Listening for command...")
+        print("🎤 Listening...")
         try:
             audio = recognizer.listen(source, timeout=5)
             command = recognizer.recognize_google(audio).lower()
@@ -23,55 +23,71 @@ def listen_command():
             return command
         except sr.UnknownValueError:
             speak("Sorry, I didn't understand that.")
-            return None
         except sr.RequestError:
-            speak("Sorry, the speech recognition service is unavailable.")
-            return None
+            speak("Sorry, the speech service is unavailable.")
         except sr.WaitTimeoutError:
-            speak("No command detected. Try again.")
-            return None
+            speak("No command detected. Please try again.")
+        return None
+
+def run_cli_command(command):
+    """🛠️ Runs CLI command safely"""
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        speak("Command executed successfully.")
+        print(result.stdout)
+    except subprocess.CalledProcessError as e:
+        speak("Error executing the command.")
+        print(f"❌ Command failed: {e}")
+    except FileNotFoundError:
+        speak("CLI script not found. Please check if cli.py exists.")
+        print("❌ cli.py not found.")
 
 def execute_voice_command(command):
-    """Map voice commands to API calls"""
-    if command is None:
-        return
-
-    base_url = "http://localhost:8000/api"
-    
+    """🎯 Map voice commands to CLI commands"""
     if "add" in command:
-        response = requests.post(f"{base_url}/add", json={
-            "id": "001", "name": "Food Packet", "width": 10, "depth": 10, "height": 20,
-            "mass": 5, "priority": 80, "expiry": "2025-05-20", "usage": 30, "zone": "Crew Quarters"
-        })
-        speak("Food Packet has been added.")
+        speak("Adding a cargo item. Please provide details.")
+        run_cli_command(["python3", "cli.py", "add", "--id", "006", "--name", "Tool Kit",
+                         "--width", "20", "--depth", "15", "--height", "10", "--mass", "5",
+                         "--priority", "85", "--expiry", "2026-06-01", "--usage", "15",
+                         "--zone", "Storage Bay"])
 
     elif "search" in command:
-        response = requests.get(f"{base_url}/search", params={"name": "Food Packet"})
-        data = response.json()
-        if data['success']:
-            speak(f"Found: {data['data']}")
-        else:
-            speak("Item not found.")
+        speak("What item do you want to search for?")
+        item_name = listen_command()
+        if item_name:
+            run_cli_command(["python3", "cli.py", "search", "--name", item_name])
 
     elif "retrieve" in command:
-        response = requests.post(f"{base_url}/retrieve", json={"id": "001"})
-        speak(response.json()['message'])
+        speak("What is the item ID?")
+        item_id = listen_command()
+        if item_id:
+            run_cli_command(["python3", "cli.py", "retrieve", "--id", item_id])
 
     elif "waste" in command:
-        response = requests.post(f"{base_url}/waste", json={"id": "001"})
-        speak(response.json()['message'])
+        speak("Which item do you want to mark as waste?")
+        item_id = listen_command()
+        if item_id:
+            run_cli_command(["python3", "cli.py", "waste", "--id", item_id])
 
-    elif "stop" in command or "exit" in command:
-        speak("Stopping voice assistant. Goodbye!")
-        exit(0)
+    elif "logs" in command:
+        speak("Fetching logs.")
+        run_cli_command(["python3", "cli.py", "logs"])
+
+    elif "exit" in command:
+        speak("Are you sure you want to exit? Say yes or no.")
+        confirmation = listen_command()
+        if confirmation and "yes" in confirmation:
+            speak("Goodbye!")
+            exit()
+        else:
+            speak("Continuing...")
 
     else:
-        speak("Invalid command. Please try again.")
+        speak("Invalid command. Try again.")
 
 if __name__ == '__main__':
-    speak("Voice command system initialized. Say a command.")
-    
     while True:
+        speak("Say a command, or say 'exit' to stop.")
         command = listen_command()
         if command:
             execute_voice_command(command)

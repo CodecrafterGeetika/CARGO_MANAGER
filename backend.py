@@ -1,12 +1,16 @@
-from pymongo.errors import DuplicateKeyError
-from mongodb import items_collection, logs_collection
+from database import items_collection, logs_collection  # Ensure db is imported
 from datetime import datetime
+import pymongo
 
-### ✅ **Add Cargo (Handles Duplicates)**
-def add_cargo(id, name, width, depth, height, mass, priority, expiry, usage, zone):
-    """Add a new cargo item to MongoDB, preventing duplicates."""
-    cargo_item = {
-        "itemId": id,
+def add_cargo(item_id, name, width, depth, height, mass, priority, expiry, usage, zone):
+    """
+    Add a new cargo item to the inventory.
+    """
+    if items_collection.find_one({"itemId": item_id}):
+        return {"success": False, "message": "❌ Error: Item ID already exists!"}
+
+    new_item = {
+        "itemId": item_id,
         "name": name,
         "width": width,
         "depth": depth,
@@ -15,69 +19,85 @@ def add_cargo(id, name, width, depth, height, mass, priority, expiry, usage, zon
         "priority": priority,
         "expiry": expiry,
         "usage": usage,
-        "zone": zone,
+        "preferredZone": zone,
         "status": "available"
     }
-    
-    try:
-        items_collection.insert_one(cargo_item)
-        log_action("add", id, {"name": name, "zone": zone})
-        print(f"✅ Item {id} added successfully!")
-        return {"success": True, "message": f"Item {id} added successfully!"}
-    except DuplicateKeyError:
-        print(f"🚨 Item with ID {id} already exists in the database!")
-        return {"success": False, "message": f"Item {id} already exists!"}
 
-### ✅ **Search Cargo**
+    items_collection.insert_one(new_item)
+    log_action("add", item_id, {"name": name, "zone": zone})
+    return {"success": True, "message": f"✅ {name} added to {zone}"}
+
+def get_items():
+    """Fetch all cargo items from the database."""
+    items = list(items_collection.find({}, {"_id": 0}))  # Exclude MongoDB ObjectId
+    return {"success": True, "data": [serialize_item(item) for item in items]}
+
 def search_cargo(name):
-    """Search for cargo by name."""
-    results = list(items_collection.find({"name": {"$regex": name, "$options": "i"}}, {"_id": 0}))
-    if results:
-        return results
-    else:
-        return {"message": "No items found."}
+    """
+    Search for cargo items by name.
+    """
+    items = list(items_collection.find({"name": {"$regex": name, "$options": "i"}}, {"_id": 0}))
+    return {"success": True, "data": [serialize_item(item) for item in items]}
 
-### ✅ **Retrieve Cargo (Decreases Usage Count)**
-def retrieve_cargo(id):
-    """Retrieve an item and decrease its usage count."""
-    item = items_collection.find_one({"itemId": id})
-    
+def retrieve_cargo(item_id):
+    """
+    Retrieve an item from the inventory.
+    """
+    item = items_collection.find_one({"itemId": item_id})
     if not item:
-        return None  # Item not found
-    
-    if item["usage"] > 0:
-        new_usage = item["usage"] - 1
-        items_collection.update_one({"itemId": id}, {"$set": {"usage": new_usage}})
-        log_action("retrieve", id, {"new_usage": new_usage})
-        return {"itemId": id, "new_usesLeft": new_usage}
+        return {"success": False, "message": "❌ Item not found!"}
+
+    if item["status"] == "waste":
+        return {"success": False, "message": "🚮 Item is marked as waste and cannot be retrieved."}
+
+    new_usage = max(0, item["usage"] - 1)
+    update_data = {"usage": new_usage}
+
+    if new_usage == 0:
+        update_data["status"] = "waste"
+        log_action("waste", item_id, {"status": "waste"})
     else:
-        return {"message": f"Item {id} has no remaining uses."}
+        log_action("retrieve", item_id, {"new_usage": new_usage})
 
-### ✅ **Mark Cargo as Waste**
-def mark_waste(id):
-    """Mark an item as waste if it's expired or has no usage left."""
-    item = items_collection.find_one({"itemId": id})
-    
+    items_collection.update_one({"itemId": item_id}, {"$set": update_data})
+    return {"success": True, "message": f"📦 Item {item_id} retrieved. Remaining usage: {new_usage}", "new_usesLeft": new_usage}
+
+def mark_waste(item_id):
+    """
+    Mark an item as waste.
+    """
+    item = items_collection.find_one({"itemId": item_id})
     if not item:
-        return None  # Item not found
-    
-    items_collection.update_one({"itemId": id}, {"$set": {"status": "waste"}})
-    log_action("waste", id, {"status": "waste"})
-    return {"message": f"Item {id} marked as waste."}
+        return {"success": False, "message": "❌ Item not found!"}
 
-### ✅ **Fetch All Waste Items**
+    items_collection.update_one({"itemId": item_id}, {"$set": {"status": "waste"}})
+    log_action("waste", item_id, {"status": "waste"})
+    return {"success": True, "message": f"🚮 Item {item_id} marked as waste"}
+
 def get_waste_items():
-    """Retrieve all waste items."""
-    return list(items_collection.find({"status": "waste"}, {"_id": 0}))
+    """Retrieve all items marked as waste."""
+    waste_items = list(items_collection.find({"status": "waste"}, {"_id": 0}))  
+    return {"success": True, "data": [serialize_item(item) for item in waste_items]}
 
-### ✅ **Log System Actions (Stores Logs in MongoDB)**
-def log_action(action_type, item_id, details=None):
-    """Log an action in the system."""
+def log_action(action_type, item_id, details):
+    """
+    Log actions like add, retrieve, or waste.
+    """
+    if "logs" not in db.list_collection_names():
+        db.create_collection("logs")  # Ensure logs collection exists
+
     log_entry = {
         "timestamp": datetime.utcnow().isoformat(),
         "actionType": action_type,
         "itemId": item_id,
         "details": details or {}
     }
-    logs_collection.insert_one(log_entry)  # ✅ Ensure logs are stored properly
-    return log_entry
+
+    db["logs"].insert_one(log_entry)  
+    return {"success": True, "message": f"📝 Action '{action_type}' logged for Item {item_id}"}
+
+def serialize_item(item):
+    """
+    Convert MongoDB item format into a readable format.
+    """
+    return {key: str(value) if isinstance(value, pymongo.ObjectId) else value for key, value in item.items()}

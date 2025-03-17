@@ -21,6 +21,10 @@ def send_request(method, endpoint, data=None, params=None):
         else:
             raise ValueError("Invalid HTTP method")
 
+        # ✅ Ensure the API returned a success response
+        if response.status_code != 200:
+            return {"success": False, "message": f"❌ Error {response.status_code}: {response.text}"}
+
         return response.json()
     
     except requests.exceptions.ConnectionError:
@@ -49,7 +53,7 @@ def add(id, name, width, depth, height, mass, priority, expiry, usage, zone):
     }
 
     response = send_request("POST", "add", data=data)
-    click.echo(response)
+    click.echo(response["message"])
 
 ### ✅ **Search Cargo**
 @cli.command()
@@ -57,9 +61,9 @@ def add(id, name, width, depth, height, mass, priority, expiry, usage, zone):
 def search(name):
     """🔍 Search for an item"""
     response = send_request("GET", "search", params={"name": name})
-    
-    if "data" in response and response["data"]:
-        for item in response["data"]:
+
+    if response.get("success"):
+        for item in response.get("data", []):
             click.echo(json.dumps(item, indent=2))
     else:
         click.echo(response["message"])
@@ -70,7 +74,7 @@ def search(name):
 def retrieve(id):
     """📦 Retrieve an item"""
     response = send_request("POST", "retrieve", data={"id": id})
-    click.echo(response)
+    click.echo(response["message"])
 
 ### ✅ **Mark Cargo as Waste**
 @cli.command()
@@ -78,7 +82,7 @@ def retrieve(id):
 def waste(id):
     """🚮 Mark an item as waste"""
     response = send_request("POST", "waste", data={"id": id})
-    click.echo(response)
+    click.echo(response["message"])
 
 ### ✅ **View Logs**
 @cli.command()
@@ -86,34 +90,21 @@ def waste(id):
 def logs(action):
     """📜 Fetch and display logs from API"""
     
-    params = {"actionType": action} if action else None
+    response = send_request("GET", "logs", params={"actionType": action} if action else None)
 
-    try:
-        response = requests.get(f"{API_URL}/logs", params=params)
-        response.raise_for_status()  # Raise an error for HTTP failures
+    if not response.get("success"):
+        click.echo(response["message"])
+        return
 
-        data = response.json()
-        
-        if not data.get("success", False):
-            click.echo("❌ API returned an error.")
-            return
+    logs = response.get("data", [])
+    if not logs:
+        click.echo("📜 No logs available.")
+        return
 
-        logs = data.get("data", [])
-        if not logs:
-            click.echo("📜 No logs available.")
-            return
-
-        # ✅ Display logs in a readable format
-        for log in logs:
-            click.echo(f"📝 {log['timestamp']} | {log['actionType'].upper()} | Item ID: {log['itemId']}")
-            click.echo(f"   ➡ Details: {json.dumps(log['details'], indent=2)}\n")
-
-    except requests.exceptions.ConnectionError:
-        click.echo("❌ ERROR: Could not connect to the API. Is Flask running?")
-    except requests.exceptions.RequestException as e:
-        click.echo(f"❌ API request failed: {str(e)}")
-    except Exception as e:
-        click.echo(f"❌ Unexpected error: {str(e)}")
+    # ✅ Display logs in a readable format
+    for log in logs:
+        click.echo(f"📝 {log['timestamp']} | {log['actionType'].upper()} | Item ID: {log['itemId']}")
+        click.echo(f"   ➡ Details: {json.dumps(log['details'], indent=2)}\n")
 
 if __name__ == '__main__':
     cli()
