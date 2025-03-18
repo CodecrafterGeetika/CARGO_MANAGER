@@ -1,4 +1,4 @@
-from database import items_collection, logs_collection  # Ensure db is imported
+from database import db, items_collection  # Import the db variable
 from datetime import datetime
 import pymongo
 

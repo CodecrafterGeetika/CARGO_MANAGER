@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from backend import add_cargo, search_cargo, retrieve_cargo, mark_waste, get_waste_items, log_action
-from mongodb import get_containers, get_items, db
+from mongodb import  db
 
 app = Flask(__name__)
 logs_collection = db["logs"]  # Ensure logs collection is defined
