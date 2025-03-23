@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ISS Cargo Manager</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.1.1/dist/css/tabler.min.css" />
+    <script src="/static/js/scripts.js" defer></script>
+</head>
+<body>
+    <div class="page">
+        <header class="navbar navbar-expand-md">
+            <div class="container-xl">
+                <h1 class="navbar-brand">🚀 ISS Cargo Management</h1>
+            </div>
+        </header>
+        <div class="container mt-4">
+            <div class="card">
+                <div class="card-header">Cargo Inventory</div>
+                <div class="card-body">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Item ID</th>
+                                <th>Name</th>
+                                <th>Zone</th>
+                                <th>Priority</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cargoTable">
+                            <!-- Data will be inserted here dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.1.1/dist/js/tabler.min.js"></script>
+</body>
+</html>
